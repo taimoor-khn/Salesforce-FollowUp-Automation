@@ -38,8 +38,16 @@ To use this solution, follow the instructions below to set up the required Sales
 4. **Track Interactions**: Ensure that every follow-up is logged as a Task for full visibility and reporting.
 
 
+## Scheduled Batch Job using this
+DateTime startTime = System.now().addMinutes(2);
+// Create the CRON expression for 2 minutes after the current time
+String cronExp = '0 ' + startTime.minute() + ' ' + startTime.hour() + ' ' + startTime.day() + ' ' + startTime.month() + ' ? ' + startTime.year();
+System.schedule('MyJob', cronExp, new FollowUpEmailBatch());
+
 ## Contributing
 Feel free to fork this repository and submit issues and pull requests. Contributions are welcome to improve and extend the functionality of the project.
 
 ## Acknowledgments
 - Thanks to the Salesforce developer community for their valuable resources and tutorials.
+
+- 
