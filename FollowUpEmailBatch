@@ -1,0 +1,123 @@
+global class FollowUpEmailBatch implements Database.Batchable<SObject>, Schedulable {
+    
+    // Query cases that have not replied yet
+    global Database.QueryLocator start(Database.BatchableContext BC) {
+        // Debug statement for troubleshooting
+        System.debug('Starting batch: Querying cases...');
+        
+        return Database.getQueryLocator([
+            SELECT Id, SuppliedEmail, Follow_Up_Stage__c, Last_Email_Sent_Date__c, Has_Replied__c
+            FROM Case
+            WHERE Has_Replied__c = false AND Follow_Up_Stage__c!='Archived'
+        ]);
+    }
+    
+    // Process each batch of cases
+    global void execute(Database.BatchableContext BC, List<Case> caseList) {
+        List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
+        List<Case> casesToUpdate = new List<Case>();
+        List<Task> tasksToInsert = new List<Task>();
+        
+        System.debug('Processing batch of cases: ' + caseList);
+        
+        for (Case c : caseList) {
+            System.debug('Processing Case: ' + c);
+            
+            // Prepare follow-up email message
+            Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
+            System.debug('Preparing email for: ' + c.SuppliedEmail + ' with follow-up stage: ' + c.Follow_Up_Stage__c);
+            
+            email.setToAddresses(new String[]{ c.SuppliedEmail });
+            email.setSubject('Reminder: Experience the New Land Rover Range Rover Sport');
+            
+            String emailBody = 'Dear Customer,\n\n' +
+                'This is a friendly reminder that the new Land Rover Range Rover SE is here!...';  // Your email body content
+            email.setPlainTextBody(emailBody);
+            emails.add(email);
+            
+            // Log outbound email as a Task (linked to the Case via WhatId)
+            Task emailTask = new Task();
+            emailTask.Subject = 'Follow-Up Email Sent to Land Rover Customer';
+            emailTask.Description = 'Follow-up email sent to ' + c.SuppliedEmail;
+            emailTask.Status = 'Completed';
+            emailTask.Priority = 'Normal';
+            emailTask.WhatId = c.Id;  // Link Task to the Case record
+            
+            
+            // Update follow-up stage for the case
+            if (String.isEmpty(c.Follow_Up_Stage__c)) {
+                c.Follow_Up_Stage__c = 'First';
+            } else if (c.Follow_Up_Stage__c == 'First') {
+                c.Follow_Up_Stage__c = 'Second';
+            } else if (c.Follow_Up_Stage__c == 'Second') {
+                c.Follow_Up_Stage__c = 'Third';
+            } else if (c.Follow_Up_Stage__c == 'Third') {
+                c.Follow_Up_Stage__c = 'Archived';  // End follow-ups after third attempt
+                emailTask.Subject = 'Cloing Follow up Emails';
+                emailTask.Description = 'Not our Potential Customer Case';
+                emailTask.Status = 'Completed';
+                emailTask.Priority = 'Normal';
+            }
+            System.debug('Updated Follow_Up_Stage__c: ' + c.Follow_Up_Stage__c);
+            
+            tasksToInsert.add(emailTask);
+            // Update the last email sent date
+            c.Last_Email_Sent_Date__c = System.today();
+            casesToUpdate.add(c);
+        }
+        
+        // Send emails if any exist
+        if (!emails.isEmpty()) {
+            Messaging.sendEmail(emails);
+        }
+        
+        // Insert tasks if any exist
+        if (!tasksToInsert.isEmpty()) {
+            insert tasksToInsert;
+        }
+        
+        // Update cases
+        try {
+            update casesToUpdate;
+        } catch (Exception e) {
+            System.debug('Error updating cases: ' + e.getMessage());
+        }
+    }
+    
+    // Schedule the next run in finish so it happens once per batch execution
+    global void finish(Database.BatchableContext BC) {
+        scheduleNextRun();
+    }
+    
+    // This execute method is required by the Schedulable interface.
+    // It simply kicks off the batch job.
+    global void execute(SchedulableContext SC) {
+        Database.executeBatch(new FollowUpEmailBatch());
+    }
+    
+    // Helper method to schedule the next run exactly 2 minutes from now.
+    private void scheduleNextRun() {
+        // Abort any existing scheduled job with the same name to avoid duplicates.
+        List<CronTrigger> existingJobs = [SELECT Id 
+                                          FROM CronTrigger 
+                                          WHERE CronJobDetail.Name = 'MyJob'
+                                          LIMIT 1];
+        for (CronTrigger job : existingJobs) {
+            System.abortJob(job.Id);
+        }
+        
+        // Calculate the next run time exactly 2 minutes from now.
+        DateTime nextRunTime = System.now().addMinutes(2);
+        // Construct a fully qualified CRON expression:
+        // Format: Seconds Minutes Hours Day_of_Month Month Day_of_Week Year
+        String cronExp = '0 ' 
+            + nextRunTime.minute() + ' ' 
+            + nextRunTime.hour() + ' ' 
+            + nextRunTime.day() + ' ' 
+            + nextRunTime.month() + ' ? ' 
+            + nextRunTime.year();
+        
+        System.debug('Scheduling next run with CRON expression: ' + cronExp);
+        System.schedule('MyJob', cronExp, new FollowUpEmailBatch());
+    }
+}
