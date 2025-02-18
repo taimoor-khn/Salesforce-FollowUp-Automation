@@ -1,0 +1,54 @@
+trigger caseTriggerHandler on Case (after insert) {
+    
+    Set<String> replyEmails = new Set<String>();
+    
+    // Only add emails from new Cases that meet your criteria.
+    for (Case newCase : Trigger.new) 
+    {
+        if (newCase.SuppliedEmail != null && newCase.Origin == 'Web' && newCase.Priority == 'Medium')
+        {
+                replyEmails.add(newCase.SuppliedEmail);
+            
+         }
+    }
+    
+    if (replyEmails.isEmpty()) {
+        return;
+    }
+    
+    // Query existing follow-up cases that match these emails and are still active in follow-up.
+    List<Case> followUpCases = [SELECT Id, SuppliedEmail, Has_Replied__c, Follow_Up_Stage__c 
+                                FROM Case 
+                                WHERE SuppliedEmail IN :replyEmails 
+                                AND Has_Replied__c = false
+                               AND Follow_Up_Stage__c IN ('First', 'Second', 'Third')
+                               ];
+    
+    List<Case> casesToUpdate = new List<Case>();
+    List<Task> tasksToInsert = new List<Task>();
+    
+    // For each follow-up case, log the reply as a Task and mark it as replied.
+    for (Case followUpCase : followUpCases) {
+        // Mark the case so that no further follow-up emails are sent.
+        followUpCase.Has_Replied__c = true;
+        casesToUpdate.add(followUpCase);
+        
+        // Create a Task to log the reply.
+        Task replyTask = new Task();
+        replyTask.Subject = 'Customer Reply Received';
+        replyTask.Description = 'Customer replied via Email-to-Case (Web, Medium).';
+        replyTask.Status = 'Completed';
+        replyTask.Priority = 'High';
+        replyTask.WhatId = followUpCase.Id;  // Link Task to the original case.
+        
+        tasksToInsert.add(replyTask);
+    }
+    
+    if (!tasksToInsert.isEmpty()) {
+        insert tasksToInsert;
+    }
+    
+    if (!casesToUpdate.isEmpty()) {
+        update casesToUpdate;
+    }
+}
