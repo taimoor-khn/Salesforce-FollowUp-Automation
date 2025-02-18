@@ -1,2 +1,9 @@
-# Salesforce-FollowUp-Automation
-An automated system for handling customer follow-ups in Salesforce, using Email-to-Case, Batch Apex, Scheduled Apex, and Messaging API for timely and personalized engagement.
+# Salesforce Follow-Up Automation
+
+An automated system in Salesforce for efficiently managing customer follow-ups. This project leverages Email-to-Case, Batch Apex, Scheduled Apex, and Messaging API integration to ensure timely and personalized customer engagement.
+
+## Features
+- Automatically converts incoming emails into Case records.
+- Periodically processes open cases for follow-up actions.
+- Sends personalized follow-up emails based on customer engagement.
+- Logs all interactions as Tasks for transparency and accountability.
